@@ -1,20 +1,18 @@
 services:
-  # ─── Backend API ───────────────────────────────────────────────
   - type: web
     name: fillercut-api
     runtime: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 60
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
     envVars:
       - key: GROQ_API_KEY
-        sync: false          # Set this manually in Render dashboard
+        sync: false
       - key: PYTHON_VERSION
         value: 3.11.0
     healthCheckPath: /api/health
     autoDeploy: true
 
-  # ─── Frontend Static Site ──────────────────────────────────────
   - type: web
     name: fillercut-frontend
     runtime: static
