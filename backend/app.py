@@ -3,11 +3,18 @@ from flask_cors import CORS
 from groq import Groq
 import os
 import re
+import sys
+import json
 
 app = Flask(__name__)
 CORS(app)
 
-client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+if not GROQ_API_KEY:
+    print("ERROR: GROQ_API_KEY environment variable is not set!", flush=True)
+    sys.exit(1)
+
+client = Groq(api_key=GROQ_API_KEY)
 MODEL = "llama-3.3-70b-versatile"
 
 FILLER_WORDS = [
@@ -20,10 +27,8 @@ FILLER_WORDS = [
 ]
 
 def highlight_fillers(text):
-    """Find filler words and their positions in the text."""
     fillers_found = []
     text_lower = text.lower()
-    
     for filler in FILLER_WORDS:
         pattern = r'\b' + re.escape(filler) + r'\b'
         for match in re.finditer(pattern, text_lower):
@@ -32,7 +37,6 @@ def highlight_fillers(text):
                 "start": match.start(),
                 "end": match.end()
             })
-    
     fillers_found.sort(key=lambda x: x["start"])
     return fillers_found
 
@@ -44,17 +48,13 @@ def health():
 
 @app.route("/api/analyze", methods=["POST"])
 def analyze():
-    """Analyze text for filler words without removing them."""
     data = request.get_json()
     text = data.get("text", "").strip()
-    
     if not text:
         return jsonify({"error": "No text provided"}), 400
-    
     fillers = highlight_fillers(text)
     word_count = len(text.split())
     filler_count = len(fillers)
-    
     return jsonify({
         "fillers": fillers,
         "word_count": word_count,
@@ -65,14 +65,11 @@ def analyze():
 
 @app.route("/api/remove", methods=["POST"])
 def remove_fillers():
-    """Use Claude AI to intelligently remove filler words."""
     data = request.get_json()
     text = data.get("text", "").strip()
-    mode = data.get("mode", "balanced")  # strict, balanced, light
-    
+    mode = data.get("mode", "balanced")
     if not text:
         return jsonify({"error": "No text provided"}), 400
-    
     if len(text) > 5000:
         return jsonify({"error": "Text too long. Maximum 5000 characters."}), 400
 
@@ -100,20 +97,22 @@ Instructions:
 
 Cleaned text:"""
 
-    response = client.chat.completions.create(
-        model=MODEL,
-        max_tokens=2000,
-        messages=[{"role": "user", "content": prompt}]
-    )
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            max_tokens=2000,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        cleaned_text = response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"Groq API error: {e}", flush=True)
+        return jsonify({"error": f"AI error: {str(e)}"}), 500
 
-    cleaned_text = response.choices[0].message.content.strip()
-    
     original_words = len(text.split())
     cleaned_words = len(cleaned_text.split())
     words_removed = original_words - cleaned_words
-    
     original_fillers = highlight_fillers(text)
-    
+
     return jsonify({
         "original": text,
         "cleaned": cleaned_text,
@@ -129,10 +128,8 @@ Cleaned text:"""
 
 @app.route("/api/suggest", methods=["POST"])
 def suggest_improvements():
-    """Get AI suggestions for improving the text beyond filler removal."""
     data = request.get_json()
     text = data.get("text", "").strip()
-    
     if not text:
         return jsonify({"error": "No text provided"}), 400
 
@@ -149,19 +146,19 @@ Respond in JSON format:
   "summary": "one sentence overall assessment"
 }}"""
 
-    response = client.chat.completions.create(
-        model=MODEL,
-        max_tokens=800,
-        messages=[{"role": "user", "content": prompt}]
-    )
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            max_tokens=800,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        response_text = response.choices[0].message.content.strip()
+        response_text = re.sub(r'```json\n?|\n?```', '', response_text).strip()
+        suggestions = json.loads(response_text)
+    except Exception as e:
+        print(f"Groq API error: {e}", flush=True)
+        return jsonify({"error": f"AI error: {str(e)}"}), 500
 
-    response_text = response.choices[0].message.content.strip()
-    # Clean potential markdown
-    response_text = re.sub(r'```json\n?|\n?```', '', response_text).strip()
-    
-    import json
-    suggestions = json.loads(response_text)
-    
     return jsonify(suggestions)
 
 
