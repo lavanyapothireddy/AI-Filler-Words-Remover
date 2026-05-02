@@ -7,7 +7,8 @@ import re
 app = Flask(__name__)
 CORS(app)
 
-client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+MODEL = "llama-3.3-70b-versatile"
 
 FILLER_WORDS = [
     "um", "uh", "like", "you know", "basically", "literally", "actually",
@@ -99,13 +100,13 @@ Instructions:
 
 Cleaned text:"""
 
-    message = client.messages.create(
-        model="claude-sonnet-4-20250514",
+    response = client.chat.completions.create(
+        model=MODEL,
         max_tokens=2000,
         messages=[{"role": "user", "content": prompt}]
     )
-    
-    cleaned_text = message.content[0].text.strip()
+
+    cleaned_text = response.choices[0].message.content.strip()
     
     original_words = len(text.split())
     cleaned_words = len(cleaned_text.split())
@@ -148,13 +149,13 @@ Respond in JSON format:
   "summary": "one sentence overall assessment"
 }}"""
 
-    message = client.messages.create(
-        model="claude-sonnet-4-20250514",
+    response = client.chat.completions.create(
+        model=MODEL,
         max_tokens=800,
         messages=[{"role": "user", "content": prompt}]
     )
-    
-    response_text = message.content[0].text.strip()
+
+    response_text = response.choices[0].message.content.strip()
     # Clean potential markdown
     response_text = re.sub(r'```json\n?|\n?```', '', response_text).strip()
     
